@@ -7,8 +7,12 @@ from data import IIDDCTGridDataset
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import os
 
 if __name__ == "__main__":
+    # Create figures directory if it doesn't exist
+    os.makedirs("figures", exist_ok=True)
+    
     grid_size = 16
     n_dct_fns = 8
     n_actions = 5
@@ -24,7 +28,7 @@ if __name__ == "__main__":
     dataset = IIDDCTGridDataset(state_features, n_actions, R)
     
     # Create data loader
-    batch_size = 16
+    batch_size = 128
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # Initialize model
@@ -97,8 +101,26 @@ if __name__ == "__main__":
     state_action_feats = dataset.state_action_feats
     R_reconstructed = model(torch.tensor(state_action_feats).float().to(device)).detach().cpu().numpy()
     R_reconstructed = R_reconstructed.reshape((grid_size, grid_size, -1))
-    _, axs = plt.subplots(5, 2)
+    
+    # Create figure with subplots
+    fig, axs = plt.subplots(5, 2, figsize=(10, 12))
+    fig.suptitle('IID Reward Learning: True vs Reconstructed Rewards', fontsize=16)
+    
     for a in range(5):
-        axs[a, 0].imshow(R.reshape((grid_size, grid_size, -1))[:, :, a])
-        axs[a, 1].imshow(R_reconstructed.reshape((grid_size, grid_size, -1))[:, :, a])
+        # True rewards
+        im1 = axs[a, 0].imshow(R.reshape((grid_size, grid_size, -1))[:, :, a], cmap='viridis')
+        axs[a, 0].set_title(f'True Reward - Action {a}')
+        axs[a, 0].axis('off')
+        plt.colorbar(im1, ax=axs[a, 0])
+        
+        # Reconstructed rewards
+        im2 = axs[a, 1].imshow(R_reconstructed.reshape((grid_size, grid_size, -1))[:, :, a], cmap='viridis')
+        axs[a, 1].set_title(f'Reconstructed Reward - Action {a}')
+        axs[a, 1].axis('off')
+        plt.colorbar(im2, ax=axs[a, 1])
+    
+    plt.tight_layout()
+    plt.savefig('figures/iid_reward_learning.png', dpi=300, bbox_inches='tight')
     plt.show()
+    
+    print("IID reward learning completed and figure saved!")

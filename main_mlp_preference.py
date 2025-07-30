@@ -7,16 +7,20 @@ from data import PreferenceDataset
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+import os
 
 def main():
-    grid_size = 16
+    # Create figures directory if it doesn't exist
+    os.makedirs("figures", exist_ok=True)
+    
+    grid_size = 32
     n_dct_fns = 8
     n_actions = 5
     n_states = grid_size ** 2
     n_dct_features = n_dct_fns ** 2
     
     # Create environment
-    P, R, S = dct_grid_env(grid_size=grid_size, n_dct_basis_fns=n_dct_fns, reward_type="dense", p_rand=0.0)
+    P, R, S = dct_grid_env(grid_size=grid_size, n_dct_basis_fns=n_dct_fns, reward_type="sparse", p_rand=0.0)
     
     # Create a simple policy (uniform random)
     policy = np.ones((n_states, n_actions)) / n_actions
@@ -25,7 +29,7 @@ def main():
     init_state_dist = np.ones(n_states) / n_states
     
     # Create preference dataset
-    num_samples = 2000
+    num_samples = 3000
     trajectory_length = 50
     beta_true = 1.0
     
@@ -43,7 +47,7 @@ def main():
     )
     
     # Create data loader
-    batch_size = 16
+    batch_size = 128
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # Initialize model
@@ -143,19 +147,26 @@ def main():
     
     # Plot original vs learned rewards
     fig, axs = plt.subplots(n_actions, 2, figsize=(10, 3*n_actions))
+    fig.suptitle('Preference-based Reward Learning: True vs Learned Rewards', fontsize=16)
+    
     for a in range(n_actions):
-        axs[a, 0].imshow(R.reshape((grid_size, grid_size, n_actions))[:, :, a])
+        # True rewards
+        im1 = axs[a, 0].imshow(R.reshape((grid_size, grid_size, n_actions))[:, :, a], cmap='viridis')
         axs[a, 0].set_title(f'True Reward - Action {a}')
         axs[a, 0].axis('off')
+        plt.colorbar(im1, ax=axs[a, 0])
         
-        axs[a, 1].imshow(R_learned[:, :, a])
+        # Learned rewards
+        im2 = axs[a, 1].imshow(R_learned[:, :, a], cmap='viridis')
         axs[a, 1].set_title(f'Learned Reward - Action {a}')
         axs[a, 1].axis('off')
+        plt.colorbar(im2, ax=axs[a, 1])
     
     plt.tight_layout()
+    plt.savefig('figures/preference_reward_learning.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    print("Preference-based reward learning completed!") 
+    print("Preference-based reward learning completed and figure saved!")
 
 if __name__ == "__main__":
     main()

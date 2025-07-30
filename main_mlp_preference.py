@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-if __name__ == "__main__":
+def main():
     grid_size = 16
     n_dct_fns = 8
     n_actions = 5
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     n_dct_features = n_dct_fns ** 2
     
     # Create environment
-    P, R, S = dct_grid_env(grid_size=grid_size, n_dct_basis_fns=n_dct_fns, reward_type="sparse", p_rand=0.0)
+    P, R, S = dct_grid_env(grid_size=grid_size, n_dct_basis_fns=n_dct_fns, reward_type="dense", p_rand=0.0)
     
     # Create a simple policy (uniform random)
     policy = np.ones((n_states, n_actions)) / n_actions
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     init_state_dist = np.ones(n_states) / n_states
     
     # Create preference dataset
-    num_samples = 100
+    num_samples = 2000
     trajectory_length = 50
     beta_true = 1.0
     
@@ -156,3 +156,6 @@ if __name__ == "__main__":
     plt.show()
     
     print("Preference-based reward learning completed!") 
+
+if __name__ == "__main__":
+    main()

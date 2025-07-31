@@ -39,7 +39,7 @@ All experiments use consistent hyperparameters for fair comparison:
 
 - **Hidden Dimensions**: [64, 32]
 - **Batch Size**: 128
-- **Number of Epochs**: 300
+- **Number of Epochs**: 200
 - **Learning Rate**: 0.001
 - **Optimizer**: Adam
 - **Dataset Size**: 3000 samples (for preference-based approaches)
@@ -82,7 +82,7 @@ All experiments use consistent hyperparameters for fair comparison:
 
 ![Preference Reward Learning](figures/preference_reward_learning.png)
 
-**Results**: The preference-based approach successfully learns the reward structure from trajectory comparisons. While the reconstruction is less precise than IID learning, it correctly identifies the goal region and learns a reasonable approximation of the sparse reward function. At the same time, we can observe that rewards vary more erratically compared to the IID and VAE approaches, hinting at overfitting.
+**Results**: The preference-based approach identifies the goal region and learns a reasonable approximation of the reward function. However, in the low-reward regions, we can see that it overfitst to "spurious" patterns in the preference data, leading to "cloud-like" patterns in the learned rewards.
 
 **Strengths**:
 - Works with human-like preference data
@@ -93,6 +93,7 @@ All experiments use consistent hyperparameters for fair comparison:
 - Lower accuracy compared to IID learning
 - Requires trajectory-level comparisons
 - No uncertainty quantification
+- Overfitting to "spurious" patterns in the preference data
 
 ### 3. VAE Preference-based Reward Learning (`main_vae_preference.py`)
 
@@ -118,6 +119,7 @@ All experiments use consistent hyperparameters for fair comparison:
 - Provides uncertainty estimates
 - Probabilistic framework
 - Can identify regions of high uncertainty
+- More regular rewards compared to MLE approach
 
 **Limitations**:
 - Lower preference prediction accuracy

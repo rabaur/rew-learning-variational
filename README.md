@@ -126,13 +126,49 @@ All experiments use consistent hyperparameters for fair comparison:
 - More complex training
 - Requires careful tuning of β parameter
 
+### 4. VAE Demonstration-based Reward Learning (`main_vae_demonstration.py`)
+
+**Approach**: Probabilistic reward learning from expert demonstrations using AVRIL framework
+- **Dataset**: 128 expert demonstration trajectories (50 steps each)
+- **Loss**: ELBO with behavioral cloning + Q-value constraint + KL divergence
+- **Model**: VariationalDemonstrationModel with precomputed state-action features
+- **Final Loss**: 3164.795227 (ELBO)
+
+![VAE Demonstration Reward Learning](figures/vae_demonstration_reward_learning.png)
+
+**Results**: The demonstration-based approach learns rewards from expert trajectories rather than preferences. The model computes Q-values for all possible state-action pairs and derives an expert policy using softmax, then maximizes the likelihood of the expert actions under this policy.
+
+#### Expert Visitation Analysis
+
+![Expert Visitation Analysis](figures/expert_visitation_analysis.png)
+
+**Expert Behavior Statistics**:
+- **Total state visits**: 6400 across all trajectories
+- **Average visits per state**: 6.25
+- **Coverage**: 860 out of 1024 states (84%) visited at least once
+- **Most visited state**: State 1023 (visited 1526 times)
+- **Never visited states**: 164 states (16% of state space)
+
+**Strengths**:
+- Works with expert demonstrations (more natural than preferences)
+- Implements proper behavioral cloning objective
+- Provides uncertainty quantification
+- Based on AVRIL framework for scalable Bayesian IRL
+
+**Limitations**:
+- Requires expert demonstrations
+- Complex training with multiple loss components
+- May struggle with states not visited by the expert
+- Numerical stability issues during training
+
 ## Comparison Summary
 
 | Approach | Final Loss | Accuracy | Uncertainty | Data Requirements |
 |----------|------------|----------|-------------|-------------------|
 | IID | 0.000035 | N/A | No | Direct rewards |
 | Preference | 0.597930 | 68.47% | No | Trajectory preferences |
-| VAE | 5.955388 | 50.50% | Yes | Trajectory preferences |
+| VAE Preference | 5.955388 | 50.50% | Yes | Trajectory preferences |
+| VAE Demonstration | 3164.795227 | N/A | Yes | Expert demonstrations |
 
 ### Key Insights
 
@@ -140,13 +176,16 @@ All experiments use consistent hyperparameters for fair comparison:
 
 2. **Preference Learning**: Provides a reasonable approximation of the reward function using only trajectory preferences, making it more practical for human-in-the-loop learning.
 
-3. **VAE Approach**: Offers uncertainty quantification at the cost of reduced accuracy, which can be valuable for identifying regions where the model is uncertain about its predictions.
+3. **VAE Preference Approach**: Offers uncertainty quantification at the cost of reduced accuracy, which can be valuable for identifying regions where the model is uncertain about its predictions.
+
+4. **VAE Demonstration Approach**: Implements the AVRIL framework for learning from expert demonstrations. While the ELBO loss is higher, this approach provides a principled way to learn rewards from expert behavior and includes uncertainty quantification.
 
 ### Practical Considerations
 
 - **Data Efficiency**: IID learning requires the least data but the most informative supervision
 - **Human Feedback**: Preference learning aligns with how humans naturally provide feedback
-- **Robustness**: VAE approach provides uncertainty estimates that can guide exploration and data collection
+- **Robustness**: VAE approaches provide uncertainty estimates that can guide exploration and data collection
+- **Expert Demonstrations**: Demonstration-based learning aligns with how humans naturally learn from observing experts
 
 ## Code Structure
 
@@ -154,9 +193,16 @@ All experiments use consistent hyperparameters for fair comparison:
 - `model.py`: Standard MLP models for IID and preference learning
 - `model_vae.py`: VAE-based probabilistic reward model
 - `data.py`: Dataset classes for IID and preference data
+- `variational_reward_learning/`: VAE models and datasets
+  - `models/variational_encoder.py`: VAE reward encoder
+  - `models/preference.py`: VAE preference model
+  - `models/demonstration.py`: VAE demonstration model (AVRIL)
+  - `data/datasets.py`: Dataset classes including DemonstrationDataset
 - `main_mlp_iid.py`: IID reward learning experiment
 - `main_mlp_preference.py`: Preference-based reward learning experiment
 - `main_vae_preference.py`: VAE preference-based reward learning experiment
+- `main_vae_demonstration.py`: VAE demonstration-based reward learning experiment
+- `plot_expert_visitation.py`: Expert visitation analysis script
 
 ## Running the Experiments
 
@@ -169,6 +215,12 @@ python main_mlp_preference.py
 
 # VAE preference-based reward learning
 python main_vae_preference.py
+
+# VAE demonstration-based reward learning
+python main_vae_demonstration.py
+
+# Expert visitation analysis
+python plot_expert_visitation.py
 ```
 
 All experiments will automatically save figures to the `figures/` directory.

@@ -2,7 +2,8 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 from mlp_helpers import simulate_trajectory
-from utils import sigmoid
+from variational_reward_learning.utils.math import sigmoid, softmax
+from variational_reward_learning.utils.tabular_solve import q_opt
 
 class IIDDCTGridDataset(Dataset):
     """
@@ -32,25 +33,26 @@ class IIDDCTGridDataset(Dataset):
 class PreferenceDataset(Dataset):
     """
     Dataset for preference learning with trajectory pairs and simulated preferences.
-    Inspired by the preferences.py implementation.
     """
-    def __init__(self, 
-                 num_samples: int,
-                 P: np.ndarray,
-                 R_true: np.ndarray, 
-                 policy: np.ndarray,
-                 init_state_dist: np.ndarray,
-                 S: np.ndarray,
-                 n_actions: int,
-                 beta_true: float = 1.0,
-                 trajectory_length: int = 100,
-                 seed: int = 42):
+    def __init__(
+        self, 
+        num_samples: int,
+        T: np.ndarray,
+        R_true: np.ndarray, 
+        policy: np.ndarray,
+        init_state_dist: np.ndarray,
+        S_features: np.ndarray,
+        n_actions: int,
+        rationality: float = 1.0,
+        trajectory_length: int = 100,
+        seed: int = 42
+    ):
         """
         Initialize preference dataset.
         
         Args:
             num_samples: Number of preference samples to generate
-            P: Transition probability matrix (n_states, n_actions, n_states)
+            T: Transition probability matrix (n_states, n_actions, n_states)
             R_true: True reward matrix (n_states, n_actions)
             policy: Policy matrix (n_states, n_actions)
             init_state_dist: Initial state distribution
@@ -61,13 +63,13 @@ class PreferenceDataset(Dataset):
             seed: Random seed for reproducibility
         """
         self.num_samples = num_samples
-        self.P = P
+        self.T = T
         self.R_true = R_true
         self.policy = policy
         self.init_state_dist = init_state_dist
-        self.S = S
+        self.S_features = S_features
         self.n_actions = n_actions
-        self.beta_true = beta_true
+        self.rationality = rationality
         self.trajectory_length = trajectory_length
         
         # Set random seed
@@ -105,7 +107,7 @@ class PreferenceDataset(Dataset):
         
         for state, action, _ in trajectory:
             # Get state features
-            state_features = self.S[state]
+            state_features = self.S_features[state]
             
             # Create one-hot encoded action
             action_one_hot = np.zeros(self.n_actions)
@@ -145,13 +147,13 @@ class PreferenceDataset(Dataset):
         trajectory_pairs = []
         preferences = []
         
-        for i in range(self.num_samples):
+        for _ in range(self.num_samples):
             # Generate two trajectories using imported function
             traj1 = simulate_trajectory(
-                self.P, self.R_true, self.policy, self.init_state_dist, self.trajectory_length
+                self.T, self.R_true, self.policy, self.init_state_dist, self.trajectory_length
             )
             traj2 = simulate_trajectory(
-                self.P, self.R_true, self.policy, self.init_state_dist, self.trajectory_length
+                self.T, self.R_true, self.policy, self.init_state_dist, self.trajectory_length
             )
             
             # Compute true returns
@@ -198,3 +200,152 @@ class PreferenceDataset(Dataset):
             Tuple of (trajectory_pairs, preferences) as numpy arrays
         """
         return self.trajectory_pairs, np.array(self.preferences)
+
+
+class DemonstrationDataset(Dataset):
+    """
+    Creates a dataset containing expert demonstrations, sampled according to:
+    π(a | s) = exp(βQ(s, a)) / ∑_{a'} exp(βQ(s, a'))
+    """
+    def __init__(
+        self,
+        T: np.ndarray,
+        R_true: np.ndarray,
+        init_state_dist: np.ndarray,
+        S_features: np.ndarray,
+        n_actions: int,
+        rationality: float = 1.0,
+        gamma: float = 0.99,
+        num_steps: int = 100,
+        seed: int = 42,
+        num_samples: int = 1000
+    ):
+        """
+        Initialize demonstration dataset.
+        
+        Args:
+            T: Transition probability matrix (n_states, n_actions, n_states)
+            R_true: True reward matrix (n_states, n_actions)
+            init_state_dist: Initial state distribution
+            S_features: State features matrix (n_states, n_dct_features)
+            n_actions: Number of actions
+            rationality: True rationality parameter for expert policy
+            gamma: Discount factor for Q-value computation
+            num_steps: Length of each demonstration trajectory
+            seed: Random seed for reproducibility
+            num_samples: Number of demonstration trajectories to generate
+        """
+        self.T = T
+        self.R_true = R_true
+        self.init_state_dist = init_state_dist
+        self.S_features = S_features
+        self.n_actions = n_actions
+        self.rationality = rationality
+        self.gamma = gamma
+        self.num_samples = num_samples
+        self.num_steps = num_steps
+        
+        # Set random seed
+        np.random.seed(seed)
+        
+        # Generate demonstrations
+        self.demonstrations = self._generate_demonstrations()
+        
+        # Pre-compute trajectory features and indices
+        self.trajectory_features, self.trajectory_indices = self._compute_trajectory_features_and_indices()
+
+    def _generate_demonstrations(self):
+        """Generate expert demonstrations using optimal Q-values."""
+        # Compute optimal Q-values
+        q_optimal = q_opt(self.T, self.R_true, self.gamma)
+        
+        # Create expert policy using softmax
+        expert_policy = softmax(self.rationality * q_optimal, dims=1)
+        
+        # Generate trajectories
+        trajectories = []
+        for _ in range(self.num_samples):
+            trajectory = simulate_trajectory(
+                self.T, self.R_true, expert_policy, self.init_state_dist, self.num_steps
+            )
+            trajectories.append(trajectory)
+        
+        return trajectories
+
+    def _trajectory_to_features_and_indices(self, trajectory: list[tuple[int, int, float]]) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Convert a trajectory to state-action features and indices.
+        
+        Args:
+            trajectory: List of (state, action, reward) tuples
+            
+        Returns:
+            Tuple of (features, indices) where:
+            - features: Array of shape (trajectory_length, n_dct_features + n_actions)
+            - indices: Array of shape (trajectory_length, 2) with (state_idx, action_idx) pairs
+        """
+        trajectory_features = []
+        trajectory_indices = []
+        
+        for state, action, _ in trajectory:
+            # Get state features
+            state_features = self.S_features[state]
+            
+            # Create one-hot encoded action
+            action_one_hot = np.zeros(self.n_actions)
+            action_one_hot[action] = 1
+            
+            # Concatenate state features and action
+            state_action_features = np.concatenate([state_features, action_one_hot])
+            trajectory_features.append(state_action_features)
+            trajectory_indices.append([state, action])
+        
+        return np.array(trajectory_features), np.array(trajectory_indices)
+    
+    def _compute_trajectory_features_and_indices(self) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """
+        Pre-compute trajectory features and indices for all demonstrations.
+        
+        Returns:
+            Tuple of (trajectory_features, trajectory_indices) where:
+            - trajectory_features: List of feature arrays
+            - trajectory_indices: List of index arrays
+        """
+        trajectory_features = []
+        trajectory_indices = []
+        
+        for trajectory in self.demonstrations:
+            traj_features, traj_indices = self._trajectory_to_features_and_indices(trajectory)
+            trajectory_features.append(traj_features)
+            trajectory_indices.append(traj_indices)
+        
+        return trajectory_features, trajectory_indices
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def __getitem__(self, idx):
+        """
+        Get a demonstration sample.
+        
+        Args:
+            idx: Index of the sample
+            
+        Returns:
+            Tuple of (features, indices) where:
+            - features: Trajectory features tensor of shape (trajectory_length, n_dct_features + n_actions)
+            - indices: Trajectory indices tensor of shape (trajectory_length, 2) with (state_idx, action_idx) pairs
+        """
+        trajectory_features = self.trajectory_features[idx]
+        trajectory_indices = self.trajectory_indices[idx]
+        return (torch.tensor(trajectory_features, dtype=torch.float32), 
+                torch.tensor(trajectory_indices, dtype=torch.long))
+    
+    def get_all_demonstrations(self):
+        """
+        Get all demonstrations as a list.
+        
+        Returns:
+            List of demonstration trajectories
+        """
+        return self.demonstrations
